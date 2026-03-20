@@ -24,6 +24,13 @@ import com.aleixcos.visto.domain.GamePhase
 import com.aleixcos.visto.domain.GameState
 import com.aleixcos.visto.engine.GameAction
 import com.aleixcos.visto.presentation.GameViewModel
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 
 private val COLS = 5
 private val ROWS = 8
@@ -116,23 +123,53 @@ fun MenuScreen(state: GameState, onStartGame: () -> Unit) {
 
 @Composable
 fun GameScreen(state: GameState, onItemTap: (Int) -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFBF0))) {
+    var lastFoundId by remember { mutableStateOf<Int?>(null) }
+    var showWrongFlash by remember { mutableStateOf(false) }
+    var prevFoundCount by remember { mutableIntStateOf(state.foundCount) }
+    var prevWrongCount by remember { mutableIntStateOf(state.wrongTapCount) }
 
-        // HUD
+    // Detectar fallo
+    LaunchedEffect(state.wrongTapCount) {
+        if (state.wrongTapCount > prevWrongCount) {
+            prevWrongCount = state.wrongTapCount
+            showWrongFlash = true
+            delay(300)
+            showWrongFlash = false
+        }
+    }
+
+    // Resetear flash de acierto
+    LaunchedEffect(state.foundCount) {
+        if (state.foundCount > prevFoundCount) {
+            prevFoundCount = state.foundCount
+            delay(350)
+            lastFoundId = null
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                if (showWrongFlash) Color(0x22FF0000)
+                else Color(0xFFFFFBF0)
+            )
+    ) {
         HUDView(state = state)
-
-        // Tablero — grid fijo 5x8
         BoardGrid(
             state = state,
+            lastFoundId = lastFoundId,
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            onItemTap = onItemTap
+            onItemTap = { itemId ->
+                // Comprobamos si es target ANTES de enviarlo al motor
+                val isTarget = state.activeTargets.any { it.id == itemId }
+                if (isTarget) lastFoundId = itemId
+                onItemTap(itemId)
+            }
         )
-
-        // Barra objetivos
         TargetsBar(targets = state.activeTargets, foundCount = state.foundCount)
     }
 }
-
 // MARK: - HUD
 
 @Composable
@@ -186,10 +223,10 @@ fun HUDView(state: GameState) {
 @Composable
 fun BoardGrid(
     state: GameState,
+    lastFoundId: Int?,
     modifier: Modifier = Modifier,
     onItemTap: (Int) -> Unit
 ) {
-    // Grid fijo 5 columnas x 8 filas — todos los items visibles
     Column(
         modifier = modifier.padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -201,15 +238,13 @@ fun BoardGrid(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 rowItems.forEach { item ->
-                    val isTarget = state.activeTargets.any { it.id == item.id }
                     BoardItemView(
                         item = item,
-                        isTarget = isTarget,
+                        isJustFound = lastFoundId == item.id,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         onTap = { onItemTap(item.id) }
                     )
                 }
-                // Rellenar si la fila está incompleta
                 repeat(COLS - rowItems.size) {
                     Spacer(modifier = Modifier.weight(1f))
                 }
@@ -223,44 +258,33 @@ fun BoardGrid(
 @Composable
 fun BoardItemView(
     item: BoardItem,
-    isTarget: Boolean,
+    isJustFound: Boolean,
     modifier: Modifier = Modifier,
     onTap: () -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "glow_${item.id}")
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f, targetValue = 0.9f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(500, easing = EaseInOut),
-            repeatMode = RepeatMode.Reverse
-        ), label = "glow_a_${item.id}"
+    val bgColor by animateColorAsState(
+        targetValue = if (isJustFound) Color(0xFF4CAF50) else Color(0xFFF5F0E8),
+        animationSpec = tween(250),
+        label = "bg_${item.id}"
     )
-
-    val scale by animateFloatAsState(
-        targetValue = if (isTarget) 1.1f else 1f,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f),
+    val emojiScale by animateFloatAsState(
+        targetValue = if (isJustFound) 1.12f else 1f,
+        animationSpec = spring(dampingRatio = 0.4f, stiffness = 600f),
         label = "scale_${item.id}"
     )
 
     Box(
         modifier = modifier
-            .scale(scale)
             .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (isTarget) Color(0xFFFFD700).copy(alpha = 0.15f)
-                else Color(0xFFF5F0E8)
-            )
-            .then(
-                if (isTarget) Modifier.border(
-                    2.dp,
-                    Color(0xFFFFD700).copy(alpha = glowAlpha),
-                    RoundedCornerShape(12.dp)
-                ) else Modifier
-            )
+            .background(bgColor)
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = item.imageKey, fontSize = 28.sp)
+        Text(
+            text = item.imageKey,
+            fontSize = 28.sp,
+            modifier = Modifier.scale(emojiScale)
+        )
     }
 }
 

@@ -31,7 +31,7 @@ class GameViewModelWrapper: ObservableObject {
     }
 
     func selectCell(cellId: Int) {
-        viewModel.onAction(action: GameActionSelectCell(cellId: Int32(cellId)))
+        viewModel.onAction(action: GameActionTapItem(itemId: Int32(cellId)))
     }
 
     func resetGame() {
