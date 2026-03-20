@@ -5,20 +5,39 @@ import Shared
 
 struct ContentView: View {
     @StateObject private var wrapper = GameViewModelWrapper()
+    @State private var isTransitioning = false
 
     var body: some View {
-        switch wrapper.state.phase {
-        case .countdown, .finished:
-            MenuView(state: wrapper.state, onStartGame: { wrapper.startGame() })
-        case .playing:
-            GameView(
-                state: wrapper.state,
-                onItemTap: { wrapper.selectCell(cellId: $0) },
-                onUsePowerUp: { wrapper.usePowerUp(powerUpId: $0) }
-            )
-        default:
-            EmptyView()
+        ZStack {
+            switch wrapper.state.phase {
+            case .countdown, .finished:
+                MenuView(state: wrapper.state) {
+                    withAnimation(.easeIn(duration: 0.2)) { isTransitioning = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        wrapper.startGame()
+                        withAnimation(.easeOut(duration: 0.3)) { isTransitioning = false }
+                    }
+                }
+                .transition(.opacity)
+            case .playing:
+                GameView(
+                    state: wrapper.state,
+                    onItemTap: { wrapper.selectCell(cellId: $0) },
+                    onUsePowerUp: { wrapper.usePowerUp(powerUpId: $0) }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            default:
+                EmptyView()
+            }
+
+            // Flash de transición
+            if isTransitioning {
+                Color.black.ignoresSafeArea()
+                    .transition(.opacity)
+            }
         }
+        .animation(.easeInOut(duration: 0.25), value: wrapper.state.phase)
+        .onAppear { HapticManager.shared.prepare() }
     }
 }
 
@@ -28,55 +47,124 @@ struct MenuView: View {
     let state: GameState
     let onStartGame: () -> Void
     @State private var pulse = false
+    @State private var floatOffset: CGFloat = 0
+
+    // Emojis decorativos de fondo
+    let bgEmojis = ["🐶","🐱","🦊","🐸","🦋","🐝","🦁","🐼","🦄","🐙",
+                    "🦀","🐬","🦅","🌺","⭐","🔥","🌈","🎯","🏆","💎"]
 
     var body: some View {
         ZStack {
+            // Fondo gradiente
             LinearGradient(
-                colors: [Color(hex: "1A1A2E"), Color(hex: "16213E"), Color(hex: "0F3460")],
+                colors: [Color(hex: "0D0D1A"), Color(hex: "1A1A2E"), Color(hex: "0F3460")],
                 startPoint: .top, endPoint: .bottom
             ).ignoresSafeArea()
 
-            VStack(spacing: 24) {
-                Text("🔍 VISTO")
-                    .font(.system(size: 52, weight: .black))
-                    .foregroundStyle(.white)
-                    .scaleEffect(pulse ? 1.05 : 1.0)
-                    .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: pulse)
-                    .onAppear { pulse = true }
-
-                Text("Encuentra los objetos\nantes que tu rival")
-                    .font(.subheadline)
-                    .foregroundStyle(Color(hex: "AAAAAA"))
-                    .multilineTextAlignment(.center)
-
-                if state.foundCount > 0 {
-                    VStack(spacing: 4) {
-                        Text("\(state.score) pts")
-                            .font(.system(size: 28, weight: .black))
-                            .foregroundStyle(.white)
-                        Text("\(state.foundCount) encontrados")
-                            .font(.subheadline)
-                            .foregroundStyle(Color(hex: "AAAAAA"))
-                    }
-                    .padding(.horizontal, 32)
-                    .padding(.vertical, 16)
-                    .background(Color.white.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                }
-
-                Button(action: onStartGame) {
-                    Text(state.foundCount > 0 ? "Jugar de nuevo" : "¡Jugar!")
-                        .font(.system(size: 18, weight: .bold))
-                        .frame(width: 200, height: 52)
-                        .background(Color(hex: "E94560"))
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+            // Emojis decorativos de fondo
+            GeometryReader { geo in
+                ForEach(Array(bgEmojis.enumerated()), id: \.offset) { index, emoji in
+                    Text(emoji)
+                        .font(.system(size: 28))
+                        .opacity(0.08)
+                        .position(
+                            x: CGFloat((index * 137) % Int(geo.size.width)),
+                            y: CGFloat((index * 89) % Int(geo.size.height))
+                        )
                 }
             }
+
+            VStack(spacing: 32) {
+                Spacer()
+
+                // Logo
+                VStack(spacing: 8) {
+                    Text("🔍")
+                        .font(.system(size: 72))
+                        .offset(y: floatOffset)
+                        .animation(
+                            .easeInOut(duration: 2).repeatForever(autoreverses: true),
+                            value: floatOffset
+                        )
+                    Text("VISTO")
+                        .font(.system(size: 56, weight: .black))
+                        .foregroundStyle(.white)
+                        .tracking(8)
+                    Text("Encuentra · Compite · Gana")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color(hex: "FFD700"))
+                        .tracking(2)
+                }
+
+                // Stats si hay partida previa
+                if state.foundCount > 0 {
+                    HStack(spacing: 20) {
+                        StatBadge(value: "\(state.score)", label: "puntos", emoji: "⭐")
+                        StatBadge(value: "\(state.foundCount)", label: "hallados", emoji: "🎯")
+                    }
+                    .transition(.scale.combined(with: .opacity))
+                }
+
+                Spacer()
+
+                // Botón jugar
+                Button(action: onStartGame) {
+                    HStack(spacing: 12) {
+                        Text("¡JUGAR!")
+                            .font(.system(size: 20, weight: .black))
+                            .tracking(2)
+                        Text("▶")
+                            .font(.system(size: 18, weight: .bold))
+                    }
+                    .foregroundStyle(Color(hex: "1A1A2E"))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 58)
+                    .background(Color(hex: "FFD700"))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .shadow(color: Color(hex: "FFD700").opacity(0.4), radius: 12, y: 4)
+                }
+                .padding(.horizontal, 40)
+                .scaleEffect(pulse ? 1.02 : 1.0)
+                .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: pulse)
+
+                Text("Combo x3 · x5 · x7 para ganar power-ups")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color(hex: "666688"))
+                    .padding(.bottom, 40)
+            }
+        }
+        .onAppear {
+            pulse = true
+            floatOffset = -10
         }
     }
 }
 
+struct StatBadge: View {
+    let value: String
+    let label: String
+    let emoji: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(emoji).font(.system(size: 20))
+            Text(value)
+                .font(.system(size: 22, weight: .black))
+                .foregroundStyle(.white)
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Color(hex: "AAAAAA"))
+                .tracking(1)
+        }
+        .frame(width: 90, height: 80)
+        .background(Color.white.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
+    }
+}
 // MARK: - Game
 
 struct GameView: View {
@@ -93,16 +181,23 @@ struct GameView: View {
     var body: some View {
         VStack(spacing: 0) {
             HUDView(state: state)
-            BoardGrid(
-                state: state,
-                lastFoundId: lastFoundId,
-                showWrongFlash: showWrongFlash,
-                onItemTap: { itemId in
-                    let isTarget = state.activeTargets.contains { $0.id == Int32(itemId) }
-                    if isTarget { lastFoundId = itemId }
-                    onItemTap(itemId)
+            ZStack {
+                BoardGrid(
+                    state: state,
+                    lastFoundId: lastFoundId,
+                    showWrongFlash: showWrongFlash,
+                    onItemTap: { itemId in
+                        let isTarget = state.activeTargets.contains { $0.id == Int32(itemId) }
+                        if isTarget { lastFoundId = itemId }
+                        onItemTap(itemId)
+                    }
+                )
+                VStack {
+                    ComboOverlay(combo: Int(state.combo))
+                        .padding(.top, 8)
+                    Spacer()
                 }
-            )
+            }
             PowerUpsBar(state: state, onUsePowerUp: onUsePowerUp)
             TargetsBar(targets: state.activeTargets, foundCount: Int(state.foundCount))
         }
@@ -110,6 +205,7 @@ struct GameView: View {
         .onChange(of: state.foundCount) { _, newVal in
             if newVal > prevFoundCount {
                 prevFoundCount = Int(newVal)
+                HapticManager.shared.correctTap()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                     lastFoundId = nil
                 }
@@ -118,6 +214,7 @@ struct GameView: View {
         .onChange(of: state.wrongTapCount) { _, newVal in
             if newVal > prevWrongCount {
                 prevWrongCount = Int(newVal)
+                HapticManager.shared.wrongTap()
                 withAnimation(.easeIn(duration: 0.08)) { showWrongFlash = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                     withAnimation(.easeOut(duration: 0.25)) { showWrongFlash = false }
@@ -155,6 +252,7 @@ struct HUDView: View {
                 Spacer()
                 Text("⭐ \(state.score)")
                     .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.black)
                     .contentTransition(.numericText())
                     .animation(.default, value: state.score)
                 Spacer()
@@ -382,38 +480,71 @@ struct PowerUpButton: View {
 struct TargetsBar: View {
     let targets: [BoardItem]
     let foundCount: Int
+    @State private var animatedTargets: [BoardItem] = []
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack {
-                Text("🎯 BUSCA:")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Color(hex: "AAAAAA"))
-                    .tracking(1)
-                Spacer()
-                Text("✅ \(foundCount) encontrados")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Color(hex: "4CAF50"))
-            }
-            HStack(spacing: 8) {
-                ForEach(targets, id: \.id) { target in
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(hex: "0F3460"))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color(hex: "FFD700"), lineWidth: 1.5)
-                            )
-                        Text(target.imageKey).font(.system(size: 30))
-                    }
-                    .frame(width: 56, height: 56)
+        VStack(spacing: 0) {
+            // Separador superior
+            Rectangle()
+                .fill(Color(hex: "FFD700").opacity(0.3))
+                .frame(height: 1)
+
+            HStack(spacing: 0) {
+                // Contador izquierda
+                VStack(spacing: 2) {
+                    Text("\(foundCount)")
+                        .font(.system(size: 24, weight: .black))
+                        .foregroundStyle(Color(hex: "FFD700"))
+                        .contentTransition(.numericText())
+                        .animation(.default, value: foundCount)
+                    Text("hallados")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color(hex: "AAAAAA"))
+                        .tracking(0.5)
                 }
-                Spacer()
+                .frame(width: 64)
+
+                // Separador
+                Rectangle()
+                    .fill(Color(hex: "FFFFFF").opacity(0.1))
+                    .frame(width: 1, height: 50)
+
+                // Objetivos
+                HStack(spacing: 10) {
+                    ForEach(targets, id: \.id) { target in
+                        TargetCard(item: target)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 12)
+            }
+            .padding(.vertical, 8)
+        }
+        .background(Color(hex: "1A1A2E"))
+    }
+}
+
+struct TargetCard: View {
+    let item: BoardItem
+    @State private var appeared = false
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(hex: "0F3460"))
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(hex: "FFD700"), lineWidth: 1.5)
+            Text(item.imageKey)
+                .font(.system(size: 28))
+        }
+        .frame(width: 52, height: 52)
+        .scaleEffect(appeared ? 1 : 0.5)
+        .opacity(appeared ? 1 : 0)
+        .onAppear {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                appeared = true
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(hex: "1A1A2E"))
     }
 }
 
