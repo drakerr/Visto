@@ -38,6 +38,10 @@ class GameViewModelWrapper: ObservableObject {
         viewModel.resetGame()
     }
 
+    func usePowerUp(powerUpId: String) {
+        viewModel.onAction(action: GameActionUsePowerUp(powerUpId: powerUpId))
+    }
+
     deinit {
         viewModel.onCleared()
     }

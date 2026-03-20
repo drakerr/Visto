@@ -5,6 +5,7 @@ import com.aleixcos.visto.domain.GameState
 import com.aleixcos.visto.engine.BoardGenerator
 import com.aleixcos.visto.engine.GameAction
 import com.aleixcos.visto.engine.GameEngine
+import com.aleixcos.visto.ghostrun.GhostRunMock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,15 +28,16 @@ class GameViewModel {
 
     fun startGame(seed: Long = Clock.System.now().toEpochMilliseconds()) {
         val board = BoardGenerator.generate(seed, cols = 5, rows = 8)
+        val ghostRun = GhostRunMock.generate(seed = seed, difficulty = 0.5f)
         val baseState = GameState.initial(seed).copy(
             board = board,
-            phase = GamePhase.PLAYING
+            phase = GamePhase.PLAYING,
+            ghostRun = ghostRun
         )
         val stateWithTargets = GameEngine.initTargets(baseState)
         _state.value = stateWithTargets
         startGameLoop()
     }
-
     private fun startGameLoop() {
         gameLoopJob?.cancel()
         gameLoopJob = scope.launch {

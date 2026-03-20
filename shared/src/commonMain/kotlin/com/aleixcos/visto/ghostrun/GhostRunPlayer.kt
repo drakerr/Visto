@@ -1,15 +1,35 @@
 package com.aleixcos.visto.ghostrun
 
+import com.aleixcos.visto.domain.GhostRun
 import com.aleixcos.visto.domain.GhostRunSnapshot
 import com.aleixcos.visto.domain.RunEvent
+import com.aleixcos.visto.scoring.ScoreCalculator
 
 object GhostRunPlayer {
 
-    // Recibe el snapshot actual y el tick — devuelve el nuevo snapshot
-    // Sin estado interno, completamente puro
-    fun snapshotAt(current: GhostRunSnapshot, tick: Long): GhostRunSnapshot {
-        // En el MVP el ghost snapshot viene del servidor ya calculado
-        // Este método es el punto de extensión para el playback completo
-        return current
+    fun snapshotAt(run: GhostRun, tick: Long): GhostRunSnapshot {
+        val eventsUpToTick = run.events.filter { it.tick <= tick }
+        var score = 0
+        var combo = 0
+        var foundCount = 0
+
+        eventsUpToTick.forEach { event ->
+            when (event) {
+                is RunEvent.ItemFound -> {
+                    combo++
+                    foundCount++
+                    score += ScoreCalculator.pointsForFind(combo)
+                }
+                is RunEvent.WrongTap -> {
+                    combo = 0
+                }
+            }
+        }
+
+        return GhostRunSnapshot(
+            currentScore = score,
+            foundCount = foundCount,
+            lastEventTick = eventsUpToTick.lastOrNull()?.tick ?: 0L
+        )
     }
 }

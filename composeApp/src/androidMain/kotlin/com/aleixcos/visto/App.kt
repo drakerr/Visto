@@ -25,6 +25,7 @@ import com.aleixcos.visto.domain.GameState
 import com.aleixcos.visto.engine.GameAction
 import com.aleixcos.visto.presentation.GameViewModel
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -48,7 +49,8 @@ fun App() {
             )
             GamePhase.PLAYING -> GameScreen(
                 state = state,
-                onItemTap = { viewModel.onAction(GameAction.TapItem(it)) }
+                onItemTap = { viewModel.onAction(GameAction.TapItem(it)) },
+                onUsePowerUp = { viewModel.onAction(GameAction.UsePowerUp(it)) }
             )
         }
     }
@@ -122,13 +124,24 @@ fun MenuScreen(state: GameState, onStartGame: () -> Unit) {
 // MARK: - Game
 
 @Composable
-fun GameScreen(state: GameState, onItemTap: (Int) -> Unit) {
+fun GameScreen(
+    state: GameState,
+    onItemTap: (Int) -> Unit,
+    onUsePowerUp: (String) -> Unit
+) {
     var lastFoundId by remember { mutableStateOf<Int?>(null) }
     var showWrongFlash by remember { mutableStateOf(false) }
     var prevFoundCount by remember { mutableIntStateOf(state.foundCount) }
     var prevWrongCount by remember { mutableIntStateOf(state.wrongTapCount) }
 
-    // Detectar fallo
+    LaunchedEffect(state.foundCount) {
+        if (state.foundCount > prevFoundCount) {
+            prevFoundCount = state.foundCount
+            delay(350)
+            lastFoundId = null
+        }
+    }
+
     LaunchedEffect(state.wrongTapCount) {
         if (state.wrongTapCount > prevWrongCount) {
             prevWrongCount = state.wrongTapCount
@@ -138,22 +151,10 @@ fun GameScreen(state: GameState, onItemTap: (Int) -> Unit) {
         }
     }
 
-    // Resetear flash de acierto
-    LaunchedEffect(state.foundCount) {
-        if (state.foundCount > prevFoundCount) {
-            prevFoundCount = state.foundCount
-            delay(350)
-            lastFoundId = null
-        }
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                if (showWrongFlash) Color(0x22FF0000)
-                else Color(0xFFFFFBF0)
-            )
+            .background(if (showWrongFlash) Color(0x22FF0000) else Color(0xFFFFFBF0))
     ) {
         HUDView(state = state)
         BoardGrid(
@@ -161,12 +162,12 @@ fun GameScreen(state: GameState, onItemTap: (Int) -> Unit) {
             lastFoundId = lastFoundId,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             onItemTap = { itemId ->
-                // Comprobamos si es target ANTES de enviarlo al motor
                 val isTarget = state.activeTargets.any { it.id == itemId }
                 if (isTarget) lastFoundId = itemId
                 onItemTap(itemId)
             }
         )
+        PowerUpsBar(state = state, onUsePowerUp = onUsePowerUp)
         TargetsBar(targets = state.activeTargets, foundCount = state.foundCount)
     }
 }
@@ -189,6 +190,9 @@ fun HUDView(state: GameState) {
         label = "combo"
     )
 
+    val isWinning = state.score >= state.ghostSnapshot.currentScore
+    val scoreDiff = state.score - state.ghostSnapshot.currentScore
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -196,28 +200,84 @@ fun HUDView(state: GameState) {
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        // Fila 1: timer, score propio, combo
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("⏱ ${state.timeRemainingMs / 1000}s",
-                fontSize = 18.sp, fontWeight = FontWeight.Bold, color = timerColor)
-            Text("⭐ ${state.score}",
-                fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Text("🔥 x${state.combo}",
+            Text(
+                "⏱ ${state.timeRemainingMs / 1000}s",
+                fontSize = 18.sp, fontWeight = FontWeight.Bold, color = timerColor
+            )
+            Text(
+                "⭐ ${state.score}",
+                fontSize = 18.sp, fontWeight = FontWeight.Bold
+            )
+            Text(
+                "🔥 x${state.combo}",
                 fontSize = 18.sp, fontWeight = FontWeight.Bold,
                 color = if (state.combo >= 3) Color(0xFFFF6B00) else Color.Gray,
-                modifier = Modifier.scale(comboScale))
+                modifier = Modifier.scale(comboScale)
+            )
         }
+
+        // Fila 2: rival
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (isWinning) Color(0xFFE8F5E9) else Color(0xFFFFEBEE))
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(if (isWinning) "👑" else "💀", fontSize = 14.sp)
+                Text(
+                    text = "Rival",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isWinning) Color(0xFF2E7D32) else Color(0xFFC62828)
+                )
+                Text(
+                    text = "· ${state.ghostSnapshot.foundCount} obj",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "⭐ ${state.ghostSnapshot.currentScore}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isWinning) Color(0xFF2E7D32) else Color(0xFFC62828)
+                )
+                val diffText = if (scoreDiff >= 0) "+$scoreDiff" else "$scoreDiff"
+                Text(
+                    text = "($diffText)",
+                    fontSize = 11.sp,
+                    color = if (isWinning) Color(0xFF43A047) else Color(0xFFE53935),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        // Barra de tiempo
         LinearProgressIndicator(
             progress = { animatedRatio },
             modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(4.dp)),
-            color = timerColor, trackColor = Color(0xFFE0E0E0)
+            color = timerColor,
+            trackColor = Color(0xFFE0E0E0)
         )
     }
 }
-
 // MARK: - Board Grid
 
 @Composable
@@ -241,6 +301,7 @@ fun BoardGrid(
                     BoardItemView(
                         item = item,
                         isJustFound = lastFoundId == item.id,
+                        isRevealed = state.revealedItemId == item.id,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         onTap = { onItemTap(item.id) }
                     )
@@ -259,12 +320,26 @@ fun BoardGrid(
 fun BoardItemView(
     item: BoardItem,
     isJustFound: Boolean,
+    isRevealed: Boolean = false,
     modifier: Modifier = Modifier,
     onTap: () -> Unit
 ) {
+    val revealPulse = rememberInfiniteTransition(label = "reveal_${item.id}")
+    val revealAlpha by revealPulse.animateFloat(
+        initialValue = 0.4f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ), label = "ra_${item.id}"
+    )
+
     val bgColor by animateColorAsState(
-        targetValue = if (isJustFound) Color(0xFF4CAF50) else Color(0xFFF5F0E8),
-        animationSpec = tween(250),
+        targetValue = when {
+            isJustFound -> Color(0xFF4CAF50)
+            isRevealed  -> Color(0xFFFFD700)
+            else        -> Color(0xFFF5F0E8)
+        },
+        animationSpec = tween(200),
         label = "bg_${item.id}"
     )
     val emojiScale by animateFloatAsState(
@@ -276,7 +351,7 @@ fun BoardItemView(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(bgColor)
+            .background(bgColor.copy(alpha = if (isRevealed) revealAlpha else 1f))
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
@@ -324,6 +399,99 @@ fun TargetsBar(targets: List<BoardItem>, foundCount: Int) {
                 ) {
                     Text(target.imageKey, fontSize = 32.sp)
                 }
+            }
+        }
+    }
+}
+
+// MARK: - PowerUps Bar
+
+@Composable
+fun PowerUpsBar(state: GameState, onUsePowerUp: (String) -> Unit) {
+    val allPowerUps = listOf(
+        Triple("reveal", "🔍", "Revelar"),
+        Triple("double_points", "⭐", "x2"),
+        Triple("freeze_time", "❄️", "Congelar"),
+        Triple("shuffle", "🔀", "Mezclar"),
+        Triple("combo_shield", "🛡️", "Escudo")
+    )
+
+    val availablePowerUps = allPowerUps.filter { (id, _, _) ->
+        state.chargesFor(id) > 0
+    }
+
+    if (availablePowerUps.isEmpty()) return
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF0F0F0))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        availablePowerUps.forEach { (id, emoji, label) ->
+            val charges = state.chargesFor(id)
+            val isActive = state.activePowerUps.any { it.powerUpId == id } ||
+                    (id == "combo_shield" && state.hasComboShield)
+
+            PowerUpButton(
+                emoji = emoji,
+                label = label,
+                charges = charges,
+                isActive = isActive,
+                onClick = { onUsePowerUp(id) }
+            )
+        }
+    }
+}
+
+@Composable
+fun PowerUpButton(
+    emoji: String,
+    label: String,
+    charges: Int,
+    isActive: Boolean,
+    onClick: () -> Unit
+) {
+    val scale by animateFloatAsState(
+        targetValue = if (isActive) 1.1f else 1f,
+        animationSpec = spring(dampingRatio = 0.4f, stiffness = 500f),
+        label = "pu_scale"
+    )
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .scale(scale)
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (isActive) Color(0xFF1A1A2E) else Color(0xFF2A2A3E)
+            )
+            .border(
+                width = if (isActive) 2.dp else 0.dp,
+                color = Color(0xFFFFD700),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Text(emoji, fontSize = 22.sp)
+        Text(
+            label,
+            fontSize = 9.sp,
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+        // Cargas disponibles
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            repeat(charges) {
+                Box(
+                    modifier = Modifier
+                        .size(5.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFFD700))
+                )
             }
         }
     }
