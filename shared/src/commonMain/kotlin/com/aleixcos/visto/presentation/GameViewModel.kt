@@ -31,13 +31,22 @@ class GameViewModel {
         val ghostRun = GhostRunMock.generate(seed = seed, difficulty = 0.5f)
         val baseState = GameState.initial(seed).copy(
             board = board,
-            phase = GamePhase.PLAYING,
+            phase = GamePhase.COUNTDOWN,
             ghostRun = ghostRun
         )
         val stateWithTargets = GameEngine.initTargets(baseState)
         _state.value = stateWithTargets
-        startGameLoop()
+        startCountdown()
     }
+
+    private fun startCountdown() {
+        scope.launch {
+            delay(3_000L)
+            _state.update { it.copy(phase = GamePhase.PLAYING) }
+            startGameLoop()
+        }
+    }
+
     private fun startGameLoop() {
         gameLoopJob?.cancel()
         gameLoopJob = scope.launch {

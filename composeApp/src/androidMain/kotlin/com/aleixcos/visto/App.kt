@@ -34,6 +34,7 @@ import com.aleixcos.visto.presentation.GameViewModel
 import kotlinx.coroutines.delay
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import com.aleixcos.visto.domain.GameResult
 
 private const val COLS = 5
@@ -58,13 +59,30 @@ fun App() {
                 label = "phase"
             ) { phase ->
                 when (phase) {
-                    GamePhase.COUNTDOWN -> MenuScreen(
+                    GamePhase.IDLE -> MenuScreen(
                         state = state,
                         onStartGame = {
                             isTransitioning = true
                             viewModel.startGame()
                         }
                     )
+                    GamePhase.COUNTDOWN -> {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            // Tablero con blur detrás
+                            Box(modifier = Modifier
+                                .fillMaxSize()
+                                .blur(8.dp)
+                            ) {
+                                GameScreen(
+                                    state = state,
+                                    onItemTap = { },
+                                    onUsePowerUp = { }
+                                )
+                            }
+                            // Overlay encima
+                            CountdownOverlay(state = state)
+                        }
+                    }
                     GamePhase.PLAYING -> GameScreen(
                         state = state,
                         onItemTap = { viewModel.onAction(GameAction.TapItem(it)) },
@@ -1026,6 +1044,121 @@ fun ParticlesView() {
                     .offset(x = x.dp, y = offsetY.dp)
                     .alpha(alpha)
             )
+        }
+    }
+}
+@Composable
+fun CountdownOverlay(state: GameState) {
+    var count by remember { mutableIntStateOf(3) }
+    var scale by remember { mutableFloatStateOf(1.4f) }
+    var showTargets by remember { mutableStateOf(false) }
+
+    val animatedScale by animateFloatAsState(
+        targetValue = scale,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 500f),
+        label = "countdown_scale"
+    )
+
+    LaunchedEffect(Unit) {
+        showTargets = true
+        repeat(3) { i ->
+            if (i > 0) {
+                count = 3 - i
+                scale = 1.4f
+                delay(50)
+                scale = 1f
+            } else {
+                scale = 1f
+            }
+            delay(1_000L)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.6f))
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceEvenly
+        ) {
+            Spacer(Modifier.height(32.dp))
+
+            // Título
+            AnimatedVisibility(
+                visible = showTargets,
+                enter = fadeIn(tween(300))
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "¡PREPÁRATE!",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFFFFD700),
+                        letterSpacing = 4.sp
+                    )
+                    Text(
+                        "Encuentra estos objetos",
+                        fontSize = 15.sp,
+                        color = Color(0xFFAAAAAA)
+                    )
+                }
+            }
+
+            // Objetivos
+            AnimatedVisibility(
+                visible = showTargets,
+                enter = scaleIn() + fadeIn()
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                ) {
+                    state.activeTargets.forEach { target ->
+                        Box(
+                            modifier = Modifier
+                                .size(70.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFF0F3460))
+                                .border(2.dp, Color(0xFFFFD700), RoundedCornerShape(16.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(target.imageKey, fontSize = 36.sp)
+                        }
+                    }
+                }
+            }
+
+            // Cuenta atrás
+            Box(contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    progress = { count / 3f },
+                    modifier = Modifier.size(100.dp),
+                    color = Color(0xFFFFD700),
+                    trackColor = Color(0xFFFFD700).copy(alpha = 0.3f),
+                    strokeWidth = 4.dp
+                )
+                Text(
+                    text = "$count",
+                    fontSize = 52.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White,
+                    modifier = Modifier.scale(animatedScale)
+                )
+            }
+
+            Text(
+                "¡A buscar!",
+                fontSize = 14.sp,
+                color = Color(0xFF666688)
+            )
+
+            Spacer(Modifier.height(32.dp))
         }
     }
 }

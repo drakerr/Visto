@@ -34,7 +34,7 @@ data class GameState(
             activeTargets = emptyList(),
             targetQueue = emptyList(),
             foundCount = 0,
-            phase = GamePhase.COUNTDOWN,
+            phase = GamePhase.IDLE,
             timeRemainingMs = 60_000L,
             score = 0,
             combo = 0,
@@ -50,4 +50,4 @@ data class GameState(
     fun chargesFor(powerUpId: String) = powerUpCharges.find { it.powerUpId == powerUpId }?.charges ?: 0
 }
 
-enum class GamePhase { COUNTDOWN, PLAYING, FINISHED }
+enum class GamePhase { IDLE, COUNTDOWN, PLAYING, FINISHED }

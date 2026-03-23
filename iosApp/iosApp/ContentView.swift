@@ -10,13 +10,27 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             switch wrapper.state.phase {
-            case .countdown:
+            case .idle:
                 MenuView(state: wrapper.state) {
                     withAnimation(.easeIn(duration: 0.2)) { isTransitioning = true }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         wrapper.startGame()
                         withAnimation(.easeOut(duration: 0.3)) { isTransitioning = false }
                     }
+                }
+                .transition(.opacity)
+
+            case .countdown:
+                ZStack {
+                    GameView(
+                        state: wrapper.state,
+                        onItemTap: { _ in },
+                        onUsePowerUp: { _ in }
+                    )
+                    .disabled(true)
+                    .blur(radius: 4)
+
+                    CountdownView(state: wrapper.state)
                 }
                 .transition(.opacity)
 
