@@ -7,7 +7,10 @@ class GhostRunRecorder {
     private val events = mutableListOf<RunEvent>()
     private var startTick: Long = 0L
 
-    fun start(tick: Long) { startTick = tick }
+    fun start(tick: Long) {
+        startTick = tick
+        events.clear()
+    }
 
     fun recordFind(tick: Long, itemId: Int) {
         events.add(RunEvent.ItemFound(tick = tick, itemId = itemId))
@@ -15,6 +18,10 @@ class GhostRunRecorder {
 
     fun recordWrongTap(tick: Long) {
         events.add(RunEvent.WrongTap(tick = tick))
+    }
+
+    fun recordPowerUp(tick: Long, powerUpId: String) {
+        events.add(RunEvent.PowerUpUsed(tick = tick, powerUpId = powerUpId))
     }
 
     fun buildRun(

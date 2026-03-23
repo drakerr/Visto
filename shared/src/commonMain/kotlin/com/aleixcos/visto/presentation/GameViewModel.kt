@@ -2,10 +2,12 @@ package com.aleixcos.visto.presentation
 
 import com.aleixcos.visto.domain.GamePhase
 import com.aleixcos.visto.domain.GameState
+import com.aleixcos.visto.domain.GhostRun
 import com.aleixcos.visto.engine.BoardGenerator
 import com.aleixcos.visto.engine.GameAction
 import com.aleixcos.visto.engine.GameEngine
 import com.aleixcos.visto.ghostrun.GhostRunMock
+import com.aleixcos.visto.ghostrun.GhostRunRecorder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -22,6 +24,11 @@ class GameViewModel {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var gameLoopJob: Job? = null
+    private var recorder = GhostRunRecorder()
+
+    // El último run grabado — listo para subir al servidor
+    private var lastRecordedRun: GhostRun? = null
+    val recordedRun: GhostRun? get() = lastRecordedRun
 
     private val _state = MutableStateFlow(GameState.initial())
     val state: StateFlow<GameState> = _state.asStateFlow()
@@ -36,6 +43,10 @@ class GameViewModel {
         )
         val stateWithTargets = GameEngine.initTargets(baseState)
         _state.value = stateWithTargets
+        // Iniciar grabación
+        recorder = GhostRunRecorder()
+        recorder.start(tick = 0L)
+
         startCountdown()
     }
 
@@ -58,11 +69,51 @@ class GameViewModel {
                 lastFrameMs = now
                 _state.update { GameEngine.tick(it, delta) }
             }
+            // Partida terminada — guardar run
+            if (_state.value.phase == GamePhase.FINISHED) {
+                saveRun()
+            }
         }
     }
 
     fun onAction(action: GameAction) {
+        val currentState = _state.value
         _state.update { GameEngine.processAction(it, action) }
+
+        // Grabar la acción
+        val newState = _state.value
+        when (action) {
+            is GameAction.TapItem -> {
+                val wasTarget = currentState.activeTargets.any { it.id == action.itemId }
+                if (wasTarget) {
+                    recorder.recordFind(
+                        tick = newState.tickCount,
+                        itemId = action.itemId
+                    )
+                } else {
+                    recorder.recordWrongTap(tick = newState.tickCount)
+                }
+            }
+            is GameAction.UsePowerUp -> {
+                recorder.recordPowerUp(
+                    tick = newState.tickCount,
+                    powerUpId = action.powerUpId
+                )
+            }
+            else -> {}
+        }
+    }
+
+    private fun saveRun() {
+        val state = _state.value
+        lastRecordedRun = recorder.buildRun(
+            runId = "local_${state.seed}",
+            playerId = "local_player",
+            seed = state.seed,
+            finalScore = state.score,
+            foundCount = state.foundCount,
+            durationMs = 60_000L - state.timeRemainingMs
+        )
     }
 
     fun resetGame() {

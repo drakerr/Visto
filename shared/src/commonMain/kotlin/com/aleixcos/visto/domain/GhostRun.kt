@@ -19,6 +19,10 @@ sealed interface RunEvent {
     data class WrongTap(
         override val tick: Long
     ) : RunEvent
+    data class PowerUpUsed(
+        override val tick: Long,
+        val powerUpId: String
+    ) : RunEvent
 }
 
 data class GhostRunSnapshot(
