@@ -24,7 +24,9 @@ data class GameState(
     val powerUpCharges: List<PowerUpCharge> = emptyList(),   // cargas disponibles
     val hasComboShield: Boolean = false,                      // escudo activo
     val revealedItemId: Int? = null,                         // item resaltado por Reveal
-    val isTimeFrozen: Boolean = false                        // timer pausado
+    val isTimeFrozen: Boolean = false,
+    val maxCombo: Int = 0,
+    val result: GameResult? = null// timer pausado
 ) {
     companion object {
         fun initial(seed: Long = Clock.System.now().toEpochMilliseconds()): GameState = GameState(

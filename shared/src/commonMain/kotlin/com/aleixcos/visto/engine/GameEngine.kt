@@ -36,13 +36,19 @@ object GameEngine {
             GhostRunPlayer.snapshotAt(it, newTick)
         } ?: state.ghostSnapshot
 
+        val newPhase = if (newTime <= 0L) GamePhase.FINISHED else GamePhase.PLAYING
+        val newResult = if (newPhase == GamePhase.FINISHED && state.result == null) {
+            ScoreCalculator.buildResult(state, state.maxCombo)
+        } else state.result
+
         return state.copy(
             timeRemainingMs = newTime,
             tickCount = newTick,
             ghostSnapshot = newGhostSnapshot,
             activePowerUps = updatedPowerUps,
             revealedItemId = newRevealedId,
-            phase = if (newTime <= 0L) GamePhase.FINISHED else GamePhase.PLAYING
+            phase = newPhase,
+            result = newResult
         )
     }
 
@@ -79,6 +85,7 @@ object GameEngine {
         val filledTargets = if (nextTarget != null) newTargets + nextTarget else newTargets
 
         val newCombo = state.combo + 1
+        val newMaxCombo = maxOf(state.maxCombo, newCombo)
 
         // Score con multiplicador si double points activo
         val multiplier = if (state.isDoublePointsActive()) 2 else 1
@@ -96,7 +103,8 @@ object GameEngine {
             combo = newCombo,
             lastFoundMs = state.timeRemainingMs,
             powerUpCharges = newCharges,
-            revealedItemId = if (state.revealedItemId == item.id) null else state.revealedItemId
+            revealedItemId = if (state.revealedItemId == item.id) null else state.revealedItemId,
+            maxCombo = newMaxCombo
         )
     }
 

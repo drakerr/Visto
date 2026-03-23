@@ -10,7 +10,7 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             switch wrapper.state.phase {
-            case .countdown, .finished:
+            case .countdown:
                 MenuView(state: wrapper.state) {
                     withAnimation(.easeIn(duration: 0.2)) { isTransitioning = true }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -19,6 +19,7 @@ struct ContentView: View {
                     }
                 }
                 .transition(.opacity)
+
             case .playing:
                 GameView(
                     state: wrapper.state,
@@ -26,17 +27,32 @@ struct ContentView: View {
                     onUsePowerUp: { wrapper.usePowerUp(powerUpId: $0) }
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+
+            case .finished:
+                if let result = wrapper.state.result {
+                    ResultView(
+                        result: result,
+                        onPlayAgain: {
+                            withAnimation(.easeIn(duration: 0.2)) { isTransitioning = true }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                wrapper.resetGame()
+                                withAnimation(.easeOut(duration: 0.3)) { isTransitioning = false }
+                            }
+                        }
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
             default:
                 EmptyView()
             }
 
-            // Flash de transición
             if isTransitioning {
                 Color.black.ignoresSafeArea()
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: wrapper.state.phase)
+        .animation(.easeInOut(duration: 0.35), value: wrapper.state.phase)
         .onAppear { HapticManager.shared.prepare() }
     }
 }
@@ -364,11 +380,9 @@ struct BoardItemView: View {
     let size: CGSize
     let onTap: () -> Void
 
-    @State private var revealPulse = false
-
     var cellColor: Color {
-        if isJustFound   { return Color(hex: "4CAF50") }
-        if isRevealed    { return Color(hex: "FFD700") }
+        if isJustFound    { return Color(hex: "4CAF50") }
+        if isRevealed     { return Color(hex: "FFD700") }
         if showWrongFlash { return Color(hex: "FFCDD2") }
         return Color(hex: "F5F0E8")
     }
@@ -377,8 +391,6 @@ struct BoardItemView: View {
         ZStack {
             RoundedRectangle(cornerRadius: 10)
                 .fill(cellColor)
-                .opacity(isRevealed ? (revealPulse ? 1.0 : 0.5) : 1.0)
-                .animation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true), value: revealPulse)
                 .animation(.easeOut(duration: 0.2), value: cellColor)
 
             Text(item.imageKey)
@@ -387,10 +399,17 @@ struct BoardItemView: View {
                 .animation(.spring(response: 0.2, dampingFraction: 0.4), value: isJustFound)
         }
         .frame(width: size.width, height: size.height)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color(hex: "FFD700"), lineWidth: isRevealed ? 2 : 0)
+                .animation(
+                    isRevealed
+                    ? .easeInOut(duration: 0.4).repeatForever(autoreverses: true)
+                    : .easeOut(duration: 0.1),
+                    value: isRevealed
+                )
+        )
         .onTapGesture { onTap() }
-        .onChange(of: isRevealed) { _, revealed in
-            revealPulse = revealed
-        }
     }
 }
 

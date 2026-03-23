@@ -34,6 +34,7 @@ import com.aleixcos.visto.presentation.GameViewModel
 import kotlinx.coroutines.delay
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.draw.alpha
+import com.aleixcos.visto.domain.GameResult
 
 private const val COLS = 5
 
@@ -57,7 +58,7 @@ fun App() {
                 label = "phase"
             ) { phase ->
                 when (phase) {
-                    GamePhase.COUNTDOWN, GamePhase.FINISHED -> MenuScreen(
+                    GamePhase.COUNTDOWN -> MenuScreen(
                         state = state,
                         onStartGame = {
                             isTransitioning = true
@@ -69,20 +70,26 @@ fun App() {
                         onItemTap = { viewModel.onAction(GameAction.TapItem(it)) },
                         onUsePowerUp = { viewModel.onAction(GameAction.UsePowerUp(it)) }
                     )
+                    GamePhase.FINISHED -> {
+                        state.result?.let { result ->
+                            ResultScreen(
+                                result = result,
+                                onPlayAgain = {
+                                    isTransitioning = true
+                                    viewModel.resetGame()
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
-            // Flash de transición
             AnimatedVisibility(
                 visible = isTransitioning,
                 enter = fadeIn(tween(150)),
                 exit = fadeOut(tween(200))
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black)
-                )
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black))
                 LaunchedEffect(Unit) {
                     delay(300)
                     isTransitioning = false
@@ -656,5 +663,369 @@ fun TargetCard(item: BoardItem) {
         contentAlignment = Alignment.Center
     ) {
         Text(item.imageKey, fontSize = 28.sp)
+    }
+}
+
+// MARK: - Result Screen
+
+@Composable
+fun ResultScreen(
+    result: GameResult,
+    onPlayAgain: () -> Unit
+) {
+    val view = LocalView.current
+    var showOutcome by remember { mutableStateOf(false) }
+    var showStats by remember { mutableStateOf(false) }
+    var showBreakdown by remember { mutableStateOf(false) }
+    var showButtons by remember { mutableStateOf(false) }
+
+    val outcomeEmoji = when (result.outcome) {
+        GameResult.Outcome.WIN  -> "🏆"
+        GameResult.Outcome.LOSE -> "💀"
+        else                    -> "🤝"
+    }
+    val outcomeText = when (result.outcome) {
+        GameResult.Outcome.WIN  -> "¡VICTORIA!"
+        GameResult.Outcome.LOSE -> "DERROTA"
+        else                    -> "EMPATE"
+    }
+    val outcomeColor = when (result.outcome) {
+        GameResult.Outcome.WIN  -> Color(0xFFFFD700)
+        GameResult.Outcome.LOSE -> Color(0xFFE53935)
+        else                    -> Color(0xFF78909C)
+    }
+    val bgColors = when (result.outcome) {
+        GameResult.Outcome.WIN  -> listOf(Color(0xFF0D1B00), Color(0xFF1A3300), Color(0xFF0F3460))
+        GameResult.Outcome.LOSE -> listOf(Color(0xFF1A0000), Color(0xFF2D0000), Color(0xFF0F3460))
+        else                    -> listOf(Color(0xFF0D0D1A), Color(0xFF1A1A2E), Color(0xFF0F3460))
+    }
+
+    LaunchedEffect(Unit) {
+        delay(100); showOutcome = true
+        delay(300); showStats = true
+        delay(300); showBreakdown = true
+        delay(300); showButtons = true
+        when (result.outcome) {
+            GameResult.Outcome.WIN  -> ViewCompat.performHapticFeedback(view, HapticFeedbackConstantsCompat.LONG_PRESS)
+            GameResult.Outcome.LOSE -> ViewCompat.performHapticFeedback(view, HapticFeedbackConstantsCompat.REJECT)
+            else -> {}
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(bgColors))
+    ) {
+        // Partículas victoria
+        if (result.outcome == GameResult.Outcome.WIN) {
+            ParticlesView()
+        }
+
+        androidx.compose.foundation.lazy.LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(vertical = 24.dp)
+        ) {
+            // Outcome
+            item {
+                AnimatedVisibility(
+                    visible = showOutcome,
+                    enter = scaleIn() + fadeIn()
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(outcomeEmoji, fontSize = 80.sp)
+                        Text(
+                            text = outcomeText,
+                            fontSize = 40.sp,
+                            fontWeight = FontWeight.Black,
+                            color = outcomeColor,
+                            letterSpacing = 4.sp
+                        )
+                    }
+                }
+            }
+
+            // Rival card
+            item {
+                AnimatedVisibility(
+                    visible = showStats,
+                    enter = slideInHorizontally { -it } + fadeIn()
+                ) {
+                    RivalCard(result = result)
+                }
+            }
+
+            // Score comparison
+            item {
+                AnimatedVisibility(
+                    visible = showStats,
+                    enter = slideInHorizontally { it } + fadeIn()
+                ) {
+                    ScoreComparisonCard(result = result, outcomeColor = outcomeColor)
+                }
+            }
+
+            // Breakdown
+            item {
+                AnimatedVisibility(
+                    visible = showBreakdown,
+                    enter = slideInVertically { it } + fadeIn()
+                ) {
+                    BreakdownCard(result = result)
+                }
+            }
+
+            // Botón
+            item {
+                AnimatedVisibility(
+                    visible = showButtons,
+                    enter = slideInVertically { it } + fadeIn()
+                ) {
+                    Button(
+                        onClick = onPlayAgain,
+                        colors = ButtonDefaults.buttonColors(containerColor = outcomeColor),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().height(54.dp)
+                    ) {
+                        Text(
+                            "¡JUGAR DE NUEVO!",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF1A1A2E),
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Rival Card
+
+@Composable
+fun RivalCard(result: GameResult) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.07f))
+            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF0F3460)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(result.rivalAvatar, fontSize = 30.sp)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(result.rivalUsername,
+                fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("Ranking #${result.rivalRank}",
+                fontSize = 12.sp, color = Color(0xFFAAAAAA))
+        }
+    }
+}
+
+// MARK: - Score Comparison
+
+@Composable
+fun ScoreComparisonCard(result: GameResult, outcomeColor: Color) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.07f))
+            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text("RESULTADO", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+            color = Color(0xFFAAAAAA), letterSpacing = 2.sp)
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("TÚ", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    color = Color(0xFFAAAAAA), letterSpacing = 1.sp)
+                Text("${result.localScore}", fontSize = 36.sp,
+                    fontWeight = FontWeight.Black, color = Color.White)
+                Text("${result.localFound} obj", fontSize = 13.sp,
+                    color = Color(0xFF4CAF50))
+            }
+            Text("VS", fontSize = 18.sp, fontWeight = FontWeight.Black,
+                color = Color(0xFFFFD700))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("RIVAL", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    color = Color(0xFFAAAAAA), letterSpacing = 1.sp)
+                Text("${result.ghostScore}", fontSize = 36.sp,
+                    fontWeight = FontWeight.Black, color = Color.White)
+                Text("${result.ghostFound} obj", fontSize = 13.sp,
+                    color = Color(0xFFE53935))
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("🔥 Mejor racha:", fontSize = 13.sp, color = Color(0xFFAAAAAA))
+            Text("x${result.maxCombo}", fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                color = if (result.maxCombo >= 5) Color(0xFFFF6B00) else Color.White)
+        }
+    }
+}
+
+// MARK: - Breakdown Card
+
+@Composable
+fun BreakdownCard(result: GameResult) {
+    val localTotal = result.localFound + result.wrongTapCount
+    val localAccuracy = if (localTotal > 0) (result.localFound * 100 / localTotal) else 0
+    val rivalTotal = result.ghostFound + result.ghostWrongTaps
+    val rivalAccuracy = if (rivalTotal > 0) (result.ghostFound * 100 / rivalTotal) else 0
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.07f))
+            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("ESTADÍSTICAS", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+            color = Color(0xFFAAAAAA), letterSpacing = 2.sp)
+
+        // Cabecera columnas
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Spacer(Modifier.weight(1f))
+            Text("TÚ", fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                color = Color(0xFF4CAF50), modifier = Modifier.width(64.dp),
+                textAlign = TextAlign.End)
+            Text("RIVAL", fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                color = Color(0xFFE53935), modifier = Modifier.width(64.dp),
+                textAlign = TextAlign.End)
+        }
+
+        ResultDivider()
+        ResultRow("🎯", "Objetos hallados", "${result.localFound}", "${result.ghostFound}")
+        ResultDivider()
+        ResultRow("⭐", "Puntos acumulados", "${result.basePoints}", "${result.ghostScore}")
+        ResultDivider()
+        ResultRow("🔥", "Mejor racha", "x${result.maxCombo}", "x${result.ghostMaxCombo}")
+        ResultDivider()
+
+        // Precisión
+        ResultRow("🎯", "Precisión", "$localAccuracy%", "$rivalAccuracy%")
+        ResultSubRow("↳ Aciertos", "${result.localFound}", "${result.ghostFound}",
+            Color(0xFF4CAF50), Color(0xFFE53935))
+        ResultSubRow("↳ Fallos", "${result.wrongTapCount}", "${result.ghostWrongTaps}",
+            Color(0xFFE53935), Color(0xFF666688))
+
+        ResultDivider(alpha = 0.2f)
+
+        // Total
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("PUNTUACIÓN", fontSize = 13.sp, fontWeight = FontWeight.Black,
+                color = Color.White, letterSpacing = 1.sp, modifier = Modifier.weight(1f))
+            Text("${result.localScore}", fontSize = 15.sp, fontWeight = FontWeight.Black,
+                color = Color(0xFFFFD700), modifier = Modifier.width(64.dp),
+                textAlign = TextAlign.End)
+            Text("${result.ghostScore}", fontSize = 15.sp, fontWeight = FontWeight.Black,
+                color = Color(0xFFAAAAAA), modifier = Modifier.width(64.dp),
+                textAlign = TextAlign.End)
+        }
+    }
+}
+
+@Composable
+fun ResultRow(emoji: String, label: String, localValue: String, rivalValue: String) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(emoji, fontSize = 13.sp)
+        Text(" $label", fontSize = 12.sp, color = Color(0xFFAAAAAA),
+            modifier = Modifier.weight(1f))
+        Text(localValue, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            color = Color.White, modifier = Modifier.width(64.dp), textAlign = TextAlign.End)
+        Text(rivalValue, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            color = Color(0xFF666688), modifier = Modifier.width(64.dp),
+            textAlign = TextAlign.End)
+    }
+}
+
+@Composable
+fun ResultSubRow(
+    label: String,
+    localValue: String,
+    rivalValue: String,
+    localColor: Color,
+    rivalColor: Color
+) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("     $label", fontSize = 11.sp, color = Color(0xFF666688),
+            modifier = Modifier.weight(1f))
+        Text(localValue, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            color = localColor, modifier = Modifier.width(64.dp), textAlign = TextAlign.End)
+        Text(rivalValue, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            color = rivalColor, modifier = Modifier.width(64.dp), textAlign = TextAlign.End)
+    }
+}
+
+@Composable
+fun ResultDivider(alpha: Float = 0.1f) {
+    Box(modifier = Modifier.fillMaxWidth().height(1.dp)
+        .background(Color.White.copy(alpha = alpha)))
+}
+
+// MARK: - Particles
+
+@Composable
+fun ParticlesView() {
+    val emojis = listOf("⭐","🏆","✨","🎉","🎊","💫","🌟")
+    val particles = remember {
+        (0..19).map { i ->
+            Triple(i, (i * 137 % 360).toFloat(), emojis[i % emojis.size])
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        particles.forEach { (index, x, emoji) ->
+            var offsetY by remember { mutableFloatStateOf(-40f) }
+            var alpha by remember { mutableFloatStateOf(1f) }
+
+            LaunchedEffect(Unit) {
+                delay(index * 100L)
+                val duration = (1500..3000).random().toLong()
+                val startTime = System.currentTimeMillis()
+                while (true) {
+                    val elapsed = System.currentTimeMillis() - startTime
+                    val progress = (elapsed.toFloat() / duration).coerceIn(0f, 1f)
+                    offsetY = -40f + progress * 900f
+                    alpha = 1f - progress
+                    if (progress >= 1f) break
+                    delay(16)
+                }
+            }
+            Text(
+                text = emoji,
+                fontSize = 20.sp,
+                modifier = Modifier
+                    .offset(x = x.dp, y = offsetY.dp)
+                    .alpha(alpha)
+            )
+        }
     }
 }
