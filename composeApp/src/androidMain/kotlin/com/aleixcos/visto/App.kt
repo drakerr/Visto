@@ -36,6 +36,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import com.aleixcos.visto.domain.GameResult
+import kotlinx.coroutines.launch
 
 private const val COLS = 5
 
@@ -44,6 +45,7 @@ fun App() {
     val viewModel = remember { GameViewModel() }
     val state by viewModel.state.collectAsStateWithLifecycle()
     var isTransitioning by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     MaterialTheme {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -61,6 +63,8 @@ fun App() {
                 when (phase) {
                     GamePhase.IDLE -> MenuScreen(
                         state = state,
+                        viewModel = viewModel,
+                        context = context,
                         onStartGame = {
                             isTransitioning = true
                             viewModel.startGame()
@@ -120,7 +124,12 @@ fun App() {
 // MARK: - Menu
 
 @Composable
-fun MenuScreen(state: GameState, onStartGame: () -> Unit) {
+fun MenuScreen(
+    state: GameState,
+    viewModel: GameViewModel,
+    context: android.content.Context,
+    onStartGame: () -> Unit
+) {
     val infiniteTransition = rememberInfiniteTransition(label = "menu")
     val pulse by infiniteTransition.animateFloat(
         initialValue = 1f, targetValue = 1.03f,
@@ -137,6 +146,13 @@ fun MenuScreen(state: GameState, onStartGame: () -> Unit) {
         ), label = "float"
     )
 
+    var isSigningIn by remember { mutableStateOf(false) }
+    var isAnonymous by remember { mutableStateOf(viewModel.isAnonymous()) }
+    var isLoggedIn by remember { mutableStateOf(viewModel.isLoggedIn()) }
+    var username by remember { mutableStateOf(viewModel.currentUsername()) }
+    var avatar by remember { mutableStateOf(viewModel.currentAvatar()) }
+    val coroutineScope = rememberCoroutineScope()
+
     val bgEmojis = listOf(
         "🐶","🐱","🦊","🐸","🦋","🐝","🦁","🐼","🦄","🐙",
         "🦀","🐬","🦅","🌺","⭐","🔥","🌈","🎯","🏆","💎"
@@ -151,15 +167,12 @@ fun MenuScreen(state: GameState, onStartGame: () -> Unit) {
                 )
             )
     ) {
-        // Emojis decorativos de fondo
+        // Emojis decorativos
         bgEmojis.forEachIndexed { index, emoji ->
-            val x = ((index * 137) % 360).dp
-            val y = ((index * 89) % 700).dp
             Text(
-                text = emoji,
-                fontSize = 28.sp,
+                text = emoji, fontSize = 28.sp,
                 modifier = Modifier
-                    .offset(x = x, y = y)
+                    .offset(x = ((index * 137) % 360).dp, y = ((index * 89) % 700).dp)
                     .alpha(0.08f)
             )
         }
@@ -173,24 +186,12 @@ fun MenuScreen(state: GameState, onStartGame: () -> Unit) {
 
             // Logo
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "🔍",
-                    fontSize = 72.sp,
-                    modifier = Modifier.offset(y = floatOffset.dp)
-                )
-                Text(
-                    text = "VISTO",
-                    fontSize = 52.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White,
-                    letterSpacing = 8.sp
-                )
-                Text(
-                    text = "Encuentra · Compite · Gana",
-                    fontSize = 13.sp,
-                    color = Color(0xFFFFD700),
-                    letterSpacing = 2.sp
-                )
+                Text(text = "🔍", fontSize = 72.sp,
+                    modifier = Modifier.offset(y = floatOffset.dp))
+                Text("VISTO", fontSize = 52.sp, fontWeight = FontWeight.Black,
+                    color = Color.White, letterSpacing = 8.sp)
+                Text("Encuentra · Compite · Gana", fontSize = 13.sp,
+                    color = Color(0xFFFFD700), letterSpacing = 2.sp)
             }
 
             // Stats partida previa
@@ -204,34 +205,114 @@ fun MenuScreen(state: GameState, onStartGame: () -> Unit) {
                 }
             }
 
-            // Botón jugar
+            // Botones
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 40.dp)
+                modifier = Modifier.padding(horizontal = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Button(
-                    onClick = onStartGame,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD700)),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(58.dp)
-                        .scale(pulse)
-                        .shadow(12.dp, RoundedCornerShape(16.dp))
-                ) {
-                    Text(
-                        text = "¡JUGAR!  ▶",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFF1A1A2E),
-                        letterSpacing = 2.sp
-                    )
+                if (isAnonymous || !isLoggedIn) {
+                    // Google Sign-In
+                    Button(
+                        onClick = {
+                            isSigningIn = true
+                            coroutineScope.launch {
+                                try {
+                                    val idToken = GoogleSignInHelper.signIn(context)
+                                    viewModel.signInWithGoogle(idToken) { success, error ->
+                                        if (success) {
+                                            isAnonymous = viewModel.isAnonymous()
+                                            isLoggedIn = viewModel.isLoggedIn()
+                                            username = viewModel.currentUsername()
+                                            avatar = viewModel.currentAvatar()
+                                        } else {
+                                            println("❌ Google Sign-In error: $error")
+                                        }
+                                        isSigningIn = false
+                                    }
+                                } catch (e: Exception) {
+                                    println("❌ Google Sign-In error: ${e.message}")
+                                    isSigningIn = false
+                                }
+                            }
+                        },
+                        enabled = !isSigningIn,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth().height(52.dp)
+                    ) {
+                        if (isSigningIn) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color(0xFF4285F4),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("G", fontSize = 20.sp, fontWeight = FontWeight.Black,
+                                    color = Color(0xFF4285F4))
+                                Text("Continuar con Google", fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold, color = Color(0xFF1A1A2E))
+                            }
+                        }
+                    }
+
+                    // Separador
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(Modifier.weight(1f).height(1.dp).background(Color.White.copy(alpha = 0.15f)))
+                        Text("o", fontSize = 12.sp, color = Color(0xFF666688),
+                            modifier = Modifier.padding(horizontal = 12.dp))
+                        Box(Modifier.weight(1f).height(1.dp).background(Color.White.copy(alpha = 0.15f)))
+                    }
+
+                    // Jugar como invitado
+                    Button(
+                        onClick = onStartGame,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
+                    ) {
+                        Text("Jugar como invitado", fontSize = 16.sp,
+                            color = Color(0xFFAAAAAA), fontWeight = FontWeight.Medium)
+                    }
+
+                } else {
+                    // Usuario registrado
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        Text(avatar, fontSize = 24.sp)
+                        Text(username, fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold, color = Color.White)
+                    }
+
+                    // Botón jugar
+                    Button(
+                        onClick = onStartGame,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD700)),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().height(58.dp).scale(pulse)
+                    ) {
+                        Text("¡JUGAR!  ▶", fontSize = 20.sp,
+                            fontWeight = FontWeight.Black, color = Color(0xFF1A1A2E),
+                            letterSpacing = 2.sp)
+                    }
                 }
-                Spacer(Modifier.height(16.dp))
+
                 Text(
-                    text = "Combo x3 · x5 · x7 para ganar power-ups",
-                    fontSize = 11.sp,
-                    color = Color(0xFF666688),
+                    "Combo x3 · x5 · x7 para ganar power-ups",
+                    fontSize = 11.sp, color = Color(0xFF666688),
                     textAlign = TextAlign.Center
                 )
                 Spacer(Modifier.height(40.dp))
@@ -239,7 +320,6 @@ fun MenuScreen(state: GameState, onStartGame: () -> Unit) {
         }
     }
 }
-
 @Composable
 fun StatBadge(value: String, label: String, emoji: String, modifier: Modifier = Modifier) {
     Column(

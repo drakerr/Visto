@@ -45,6 +45,45 @@ class GameViewModelWrapper: ObservableObject {
     deinit {
         viewModel.onCleared()
     }
+
+    func signInWithGoogle() {
+        Task {
+            do {
+                let idToken = try await GoogleSignInHelper.signIn()
+                viewModel.signInWithGoogle(idToken: idToken) { [weak self] success, error in
+                    guard let self else { return }
+                    if let error {
+                        print("❌ Google Sign-In error: \(error)")
+                    } else {
+                        Task { @MainActor in
+                            // Refrescar estado tras login
+                            self.state = GameState.companion.initial(
+                                seed: Int64(Date().timeIntervalSince1970 * 1000)
+                            )
+                        }
+                    }
+                }
+            } catch {
+                print("❌ Google Sign-In error: \(error)")
+            }
+        }
+    }
+
+    func isLoggedIn() -> Bool {
+        viewModel.isLoggedIn()
+    }
+
+    func isAnonymous() -> Bool {
+        viewModel.isAnonymous()
+    }
+
+    func currentUsername() -> String {
+        viewModel.currentUsername()
+    }
+
+    func currentAvatar() -> String {
+        viewModel.currentAvatar()
+    }
 }
 
 class FlowCollector: Kotlinx_coroutines_coreFlowCollector {

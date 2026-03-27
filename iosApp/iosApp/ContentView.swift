@@ -11,13 +11,17 @@ struct ContentView: View {
         ZStack {
             switch wrapper.state.phase {
             case .idle:
-                MenuView(state: wrapper.state) {
-                    withAnimation(.easeIn(duration: 0.2)) { isTransitioning = true }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        wrapper.startGame()
-                        withAnimation(.easeOut(duration: 0.3)) { isTransitioning = false }
-                    }
-                }
+                MenuView(
+                    state: wrapper.state,
+                    onStartGame: {
+                        withAnimation(.easeIn(duration: 0.2)) { isTransitioning = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            wrapper.startGame()
+                            withAnimation(.easeOut(duration: 0.3)) { isTransitioning = false }
+                        }
+                    },
+                    wrapper: wrapper
+                )
                 .transition(.opacity)
 
             case .countdown:
@@ -76,22 +80,21 @@ struct ContentView: View {
 struct MenuView: View {
     let state: GameState
     let onStartGame: () -> Void
+    @ObservedObject var wrapper: GameViewModelWrapper
     @State private var pulse = false
     @State private var floatOffset: CGFloat = 0
+    @State private var isSigningIn = false
 
-    // Emojis decorativos de fondo
     let bgEmojis = ["🐶","🐱","🦊","🐸","🦋","🐝","🦁","🐼","🦄","🐙",
                     "🦀","🐬","🦅","🌺","⭐","🔥","🌈","🎯","🏆","💎"]
 
     var body: some View {
         ZStack {
-            // Fondo gradiente
             LinearGradient(
                 colors: [Color(hex: "0D0D1A"), Color(hex: "1A1A2E"), Color(hex: "0F3460")],
                 startPoint: .top, endPoint: .bottom
             ).ignoresSafeArea()
 
-            // Emojis decorativos de fondo
             GeometryReader { geo in
                 ForEach(Array(bgEmojis.enumerated()), id: \.offset) { index, emoji in
                     Text(emoji)
@@ -126,36 +129,108 @@ struct MenuView: View {
                         .tracking(2)
                 }
 
-                // Stats si hay partida previa
+                // Stats partida previa
                 if state.foundCount > 0 {
                     HStack(spacing: 20) {
                         StatBadge(value: "\(state.score)", label: "puntos", emoji: "⭐")
                         StatBadge(value: "\(state.foundCount)", label: "hallados", emoji: "🎯")
                     }
-                    .transition(.scale.combined(with: .opacity))
                 }
 
                 Spacer()
 
-                // Botón jugar
-                Button(action: onStartGame) {
-                    HStack(spacing: 12) {
-                        Text("¡JUGAR!")
-                            .font(.system(size: 20, weight: .black))
-                            .tracking(2)
-                        Text("▶")
-                            .font(.system(size: 18, weight: .bold))
+                // Botones de auth y jugar
+                VStack(spacing: 12) {
+                    if wrapper.isAnonymous() || !wrapper.isLoggedIn() {
+                        // Google Sign-In
+                        Button(action: {
+                            isSigningIn = true
+                            wrapper.signInWithGoogle()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                isSigningIn = false
+                            }
+                        }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "g.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(Color(hex: "4285F4"))
+                                Text("Continuar con Google")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Color(hex: "1A1A2E"))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                        .disabled(isSigningIn)
+
+                        // Apple Sign-In
+                        Button(action: {
+                            // lo implementamos en el siguiente paso
+                        }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "apple.logo")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(.white)
+                                Text("Continuar con Apple")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color.black)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                        }
+
+                        // Separador
+                        HStack {
+                            Rectangle().fill(Color.white.opacity(0.15)).frame(height: 1)
+                            Text("o")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color(hex: "666688"))
+                                .padding(.horizontal, 12)
+                            Rectangle().fill(Color.white.opacity(0.15)).frame(height: 1)
+                        }
+                    } else {
+                        // Usuario registrado — mostrar avatar y username
+                        HStack(spacing: 10) {
+                            Text(wrapper.currentAvatar())
+                                .font(.system(size: 24))
+                            Text(wrapper.currentUsername())
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                        .padding(.vertical, 8)
                     }
-                    .foregroundStyle(Color(hex: "1A1A2E"))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 58)
-                    .background(Color(hex: "FFD700"))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .shadow(color: Color(hex: "FFD700").opacity(0.4), radius: 12, y: 4)
+
+                    // Botón jugar
+                    Button(action: onStartGame) {
+                        HStack(spacing: 12) {
+                            Text(wrapper.isAnonymous() || !wrapper.isLoggedIn() ? "Jugar como invitado" : "¡JUGAR!")
+                                .font(.system(size: wrapper.isAnonymous() ? 16 : 20, weight: .black))
+                                .tracking(wrapper.isAnonymous() ? 0 : 2)
+                            if !(wrapper.isAnonymous() || !wrapper.isLoggedIn()) {
+                                Text("▶").font(.system(size: 18, weight: .bold))
+                            }
+                        }
+                        .foregroundStyle(wrapper.isAnonymous() || !wrapper.isLoggedIn() ? Color(hex: "AAAAAA") : Color(hex: "1A1A2E"))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: wrapper.isAnonymous() || !wrapper.isLoggedIn() ? 44 : 58)
+                        .background(wrapper.isAnonymous() || !wrapper.isLoggedIn() ? Color.clear : Color(hex: "FFD700"))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color.white.opacity(wrapper.isAnonymous() || !wrapper.isLoggedIn() ? 0.15 : 0), lineWidth: 1)
+                        )
+                    }
+                    .shadow(color: wrapper.isAnonymous() ? .clear : Color(hex: "FFD700").opacity(0.4), radius: 12, y: 4)
                 }
                 .padding(.horizontal, 40)
-                .scaleEffect(pulse ? 1.02 : 1.0)
-                .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: pulse)
 
                 Text("Combo x3 · x5 · x7 para ganar power-ups")
                     .font(.system(size: 11))

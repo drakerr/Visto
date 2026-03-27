@@ -54,6 +54,7 @@ object GhostRunMock {
             when (event) {
                 is RunEvent.ItemFound -> { combo++; foundCount++; score += 100 * minOf(combo / 3 + 1, 3) }
                 is RunEvent.WrongTap  -> combo = 0
+                is RunEvent.PowerUpUsed -> { /* no afecta al score del mock */ }
             }
         }
 

@@ -23,6 +23,7 @@ object GhostRunPlayer {
                 is RunEvent.WrongTap -> {
                     combo = 0
                 }
+                is RunEvent.PowerUpUsed -> { /* no afecta al playback del ghost */ }
             }
         }
 

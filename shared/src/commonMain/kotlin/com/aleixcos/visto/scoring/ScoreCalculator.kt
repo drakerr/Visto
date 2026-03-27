@@ -46,6 +46,7 @@ object ScoreCalculator {
                     ghostCombo = 0
                     ghostWrongTaps++
                 }
+                is RunEvent.PowerUpUsed -> { /* no afecta al cálculo del resultado */ }
             }
         }
 

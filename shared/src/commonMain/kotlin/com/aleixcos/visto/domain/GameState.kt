@@ -35,7 +35,7 @@ data class GameState(
             targetQueue = emptyList(),
             foundCount = 0,
             phase = GamePhase.IDLE,
-            timeRemainingMs = 60_000L,
+            timeRemainingMs = 10_000L,
             score = 0,
             combo = 0,
             lastFoundMs = 0L,
